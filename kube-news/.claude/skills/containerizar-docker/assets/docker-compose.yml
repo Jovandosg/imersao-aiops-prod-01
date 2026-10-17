@@ -1,0 +1,41 @@
+# Template — substitua os <placeholders> pelos valores levantados na descoberta.
+# Remova o serviço de banco se a app não tiver dependência externa.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: <db_name>
+      POSTGRES_USER: <db_user>
+      POSTGRES_PASSWORD: "<db_password>"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U <db_user> -d <db_name>"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: ./<dir_app>
+    image: <app>:local
+    ports:
+      - "<porta_app>:<porta_app>"
+    environment:
+      # nomes EXATOS das variáveis lidas no código
+      <VAR_HOST>: postgres
+      <VAR_PORT>: "5432"
+      <VAR_DATABASE>: <db_name>
+      <VAR_USER>: <db_user>
+      <VAR_PASSWORD>: "<db_password>"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+
+# Outros bancos (healthcheck equivalente):
+#   mysql:8      -> test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]  volume /var/lib/mysql
+#   mongo:7      -> test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]  volume /data/db
+#   redis:7-alpine -> test: ["CMD", "redis-cli", "ping"]
+# Se a imagem não tiver tini (ex.: distroless), adicione `init: true` no serviço app.
