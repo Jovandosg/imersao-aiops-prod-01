@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-news
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: kube-news
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "kubedevnews"
+            - name: POSTGRES_USER
+              value: "kubedevnews"
+            - name: POSTGRES_PASSWORD
+              value: "Pg#123"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "kubedevnews", "-d", "kubedevnews"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "kubedevnews", "-d", "kubedevnews"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kube-news
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-news
+  namespace: kube-news
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kube-news
+  template:
+    metadata:
+      labels:
+        app: kube-news
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:18-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432; do echo "aguardando o banco"; sleep 2; done
+      containers:
+        - name: kube-news
+          image: fabricioveronez/kube-news-aiops:1.0.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_DATABASE
+              value: "kubedevnews"
+            - name: DB_USERNAME
+              value: "kubedevnews"
+            - name: DB_PASSWORD
+              value: "Pg#123"
+            - name: DB_SSL_REQUIRE
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-news
+  namespace: kube-news
+spec:
+  type: LoadBalancer
+  selector:
+    app: kube-news
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080

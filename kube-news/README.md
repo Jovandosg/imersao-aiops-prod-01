@@ -82,6 +82,31 @@ Para configurar a aplicação, defina as seguintes variáveis de ambiente:
    ```
 5. Acesse a aplicação em [http://localhost:8080](http://localhost:8080)
 
+### Docker Compose (desenvolvimento)
+
+Sobe a app (`src/Dockerfile.dev`, com hot-reload por `node --watch`) e o PostgreSQL 18, com volume nomeado:
+
+```bash
+docker compose up --build
+# app em http://localhost:8080
+docker compose down      # mantém os dados; use -v para apagar o volume
+```
+
+### Kubernetes local com kind
+
+Valida a imagem de produção e o manifesto `k8s/kube-news.yaml` (ver [ADR 009](docs/adrs/009-validacao-local-kind-nodeport.md)). A app fica em http://localhost:8081 (nodePort 30080).
+
+```bash
+docker build -t fabricioveronez/kube-news-aiops:1.0.0 src/
+kind create cluster --name kube-news --config k8s/kind-config.yaml
+kind load docker-image fabricioveronez/kube-news-aiops:1.0.0 --name kube-news
+# aplique k8s/kube-news.yaml pelo MCP Kubernetes (contexto kind-kube-news)
+```
+
+Validação: rollout 2/2; balanceamento (`curl` em loop em `/health` alterna o `machine`); `PUT /unreadyfor/60` tira um pod dos endpoints; `PUT /unhealth` reinicia o pod. O Postgres do cluster não tem volume: ao recriá-lo, faça `rollout restart` do Deployment `kube-news`.
+
+Para remover: `kind delete cluster --name kube-news`.
+
 ### População de Dados de Exemplo
 
 Utilize o arquivo `popula-dados.http` para inserir notícias de exemplo:
