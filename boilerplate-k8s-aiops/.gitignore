@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+.env
+.venv/
+venv/
+env/
+
+.idea/
+.vscode/
+*.swp
+*.swo
+
+*.db
+*.sqlite3
+
+*.Identifier
+
+# Skills locais (symlinks para a harness-library)
+.claude/skills/
