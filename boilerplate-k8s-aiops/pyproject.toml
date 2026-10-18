@@ -38,5 +38,9 @@ packages = ["src/my_agent_app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-markers = ["kind: testes de integracao contra o cluster kind local (uv run pytest -m kind)"]
-addopts = "-m 'not kind'"
+markers = [
+    "kind: testes de integracao contra o cluster kind local (uv run pytest -m kind)",
+    "db: testes contra o PostgreSQL do docker compose, banco aiops_k8s_test (uv run pytest -m db)",
+    "e2e: fluxo completo com kind + PostgreSQL + MCP Server + API Anthropic (uv run pytest -m e2e)",
+]
+addopts = "-m 'not kind and not db and not e2e'"

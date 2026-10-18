@@ -72,7 +72,7 @@ uv run uvicorn meu_agente.main:app --host 0.0.0.0 --port 8000
 
 ## Coleta de eventos Kubernetes
 
-Ao subir, a aplicacao inicia um loop (`collector/`) que lista os eventos **Warning** de todos os namespaces via API `events.k8s.io/v1` a cada `EVENT_COLLECTION_INTERVAL_MINUTES` (padrao 3). A primeira coleta e imediata e entrega todos os Warnings ainda presentes no cluster; as seguintes usam uma marca d'agua em memoria com sobreposicao de um intervalo. Cada batch e despachado ao `EventHandler`, que por enquanto imprime os eventos no stdout.
+Ao subir, a aplicacao inicia um loop (`collector/`) que lista os eventos **Warning** de todos os namespaces via API `events.k8s.io/v1` a cada `EVENT_COLLECTION_INTERVAL_MINUTES` (padrao 3). A primeira coleta e imediata e entrega todos os Warnings ainda presentes no cluster; as seguintes usam uma marca d'agua em memoria com sobreposicao de um intervalo. Cada batch e despachado ao `AnalysisEventHandler` (`agents/`), que remove os eventos ja cobertos por relatorios, grava um relatorio EM_ANALISE e aciona o agente de causa raiz (LangChain + Claude, tools somente leitura do MCP Server). A resposta vira um relatorio por problema na tabela `reports`.
 
 A autenticacao tenta o service account (in-cluster) e, em seguida, o kubeconfig local (`KUBECONFIG` ou `~/.kube/config`).
 
@@ -126,25 +126,61 @@ kubectl --context kind-aiops get events -A --field-selector type=Warning
 kubectl config use-context kind-aiops
 uv run pytest -m kind
 
-# Rodar a app contra o kind com coleta a cada 30s
-EVENT_COLLECTION_INTERVAL_MINUTES=0.5 uv run uvicorn my_agent_app.main:app --port 8000
+# Banco + MCP Server (o MCP usa o contexto ativo: confira que e o kind-aiops)
+docker compose up -d
+uv run alembic upgrade head
+ENABLE_UNSAFE_STREAMABLE_HTTP_TRANSPORT=1 PORT=3001 npx mcp-server-kubernetes   # outro terminal
+
+# Testes de banco e fluxo completo (o e2e recria teste-a/teste-b e faz uma analise real na API Anthropic)
+uv run pytest -m db
+uv run pytest -m e2e
+
+# Rodar a app contra o kind com coleta a cada 30s e cooldown curto de reanalise
+EVENT_COLLECTION_INTERVAL_MINUTES=0.5 ANALYSIS_RETRY_COOLDOWN_MINUTES=2 uv run uvicorn my_agent_app.main:app --port 8000
+
+# Conferir os relatorios
+docker compose exec postgres psql -U aiops aiops_k8s -c "select status, severity, namespace, title from reports order by created_at"
 
 # Teardown
 kind delete cluster --name aiops
 ```
+
+## Interface web e correcao automatica
+
+Com a app no ar, `http://localhost:8000/reports` lista os relatorios (mais recente primeiro) e `/reports/{id}` mostra o detalhe com o Markdown convertido no servidor. Relatorios COMPLETO ou FALHA_CORRECAO exibem o botao **Executar correcao**: o `POST /reports/{id}/fix` move o relatorio para CORRIGINDO e dispara em background o agente de correcao, que tem **acesso irrestrito ao cluster** via MCP Server (todas as tools, inclusive escrita). Atualize a pagina para acompanhar; o resultado aparece na secao "Resultado da Correcao".
+
+A correcao roda sob `CORRECTION_TIMEOUT_MINUTES` (padrao 10). Correcoes interrompidas por restart viram FALHA_CORRECAO no startup e podem ser acionadas de novo.
+
+### Seed para validar a interface sem o agente
+
+```bash
+uv run alembic upgrade head
+uv run python scripts/seed_reports.py   # um relatorio em cada um dos seis status (usa DATABASE_URL)
+```
+
+### Teste de ponta a ponta da correcao
+
+Mesmos pre-requisitos do `uv run pytest -m e2e` acima: contexto ativo `kind-aiops`, PostgreSQL do docker compose, MCP Server em `MCP_SERVER_URL` e `ANTHROPIC_API_KEY` no `.env`. O teste recria `teste-a`/`teste-b`, aplica os manifestos, faz a analise real e aciona `POST /reports/{id}/fix` para o nginx e depois para o kube-news, conferindo banco, cluster e interface.
+
+```bash
+uv run pytest -m e2e tests/test_e2e_correcao.py
+```
+
+Custo por execucao: **uma analise e duas correcoes reais** na API Anthropic. Ao fim, o cluster fica com os cenarios corrigidos; a proxima execucao recria os namespaces. Na primeira execucao, as respostas do agente de correcao sao gravadas em `tests/fixtures/e2e_correction_responses.json` e passam a ser casos de `tests/test_verdict.py`.
 
 ## Estrutura
 
 ```
 src/my_agent_app/
 ├── main.py              # FastAPI + lifespan
-├── database.py          # SQLAlchemy async engine
+├── database.py          # Base declarativa + DATABASE_URL
 ├── api/router.py        # Health check
-├── web/router.py        # Pagina inicial (Jinja2)
+├── web/                 # Paginas de relatorios, POST /fix e render do Markdown (Jinja2)
 ├── templates/           # Templates HTML (dark theme)
-├── agents/              # (placeholder) Agentes LangChain + MCP
+├── agents/              # Analise (dedup, handler, prompt, parser, agente) e correcao (prompt, veredito, agente, executor)
 ├── collector/           # Loop de coleta de eventos Warning do Kubernetes
-└── models/              # (placeholder) Modelos e queries
+└── models/              # Report (ORM) e repositorio de transicoes
+scripts/seed_reports.py  # Relatorios de exemplo em todos os status
 ```
 
 ## Stack
