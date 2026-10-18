@@ -225,8 +225,21 @@ Ajuste feito a partir do roteiro: o cliente MCP levanta `ExceptionGroup` ("unhan
 
 O 503 não foi exercitado no navegador (exigiria parar o PostgreSQL); está coberto pelos testes de rota com `OperationalError` e `ConnectionRefusedError`.
 
-### Suítes (10.8) — 2026-10-18
+### Suítes (10.8) — 2026-10-18, ambiente recriado do zero
 
-- `uv run pytest`: 208 passed, 1 skipped (o caso parametrizado de `test_verdict.py` lido de `e2e_correction_responses.json`, que ainda não existe).
-- `uv run pytest -m db`: 30 passed.
-- `uv run pytest -m e2e`: 2 skipped. O contexto ativo é `kind-kind` e o cluster `aiops` não existe (`kind get clusters`). **Pendente**: rodar com o cluster `kind-aiops`, o MCP Server apontando para ele e `ANTHROPIC_API_KEY`. Isso também gera `tests/fixtures/e2e_correction_responses.json` (10.5).
+Ambiente: `docker compose up -d` + `alembic upgrade head`, `kind create cluster --name aiops` (contexto `kind-aiops`), MCP Server via `npx` na porta 3001.
+
+| Suíte | Resultado |
+|---|---|
+| `uv run pytest` | 214 passed (inclui os 2 casos reais de `e2e_correction_responses.json` em `test_verdict.py`) |
+| `uv run pytest -m db` | 30 passed |
+| `uv run pytest -m kind` | 5 passed (depois de aplicar os cenários do README no cluster novo) |
+| `uv run pytest -m e2e tests/test_e2e_correcao.py` | 1 passed em 2min09s: nginx CORRIGIDO em 25,7 s, kube-news CORRIGIDO em 47,0 s; banco, cluster (kubenews 10/10, imagem e env preservados) e interface conferidos |
+| `uv run pytest -m e2e tests/test_e2e.py` | 1 failed: o modelo de análise omitiu um uid do lote (`Uids do lote nao citados em nenhum problema`). Não determinismo do fluxo do PRD 002, fora do escopo desta change |
+
+Histórico das execuções do e2e de correção:
+1. **Falhou**: a correção do nginx abortou com `MCP error -32603: Failed to execute rollout command: spawnSync kubectl ETIMEDOUT`. O erro de execução da tool escapava do `handle_tool_errors`. Corrigido com o interceptor `tool_errors_as_results` (ver D6) e um novo cenário na spec.
+2. **Falhou no setup**: o namespace `teste-a` continuou `Terminating` por mais de 120 s e a recriação recebeu 409. `_recreate_namespace` passou a esperar até 300 s e a falhar com mensagem clara.
+3. **Passou.**
+
+Observação das respostas reais: nenhuma das duas trouxe o veredito na primeira linha, como o prompt pede (uma começa com emoji e prosa; a outra usa `## CORRIGIDO:`). A busca em qualquer linha, com prefixos Markdown tolerados (D7), foi necessária.

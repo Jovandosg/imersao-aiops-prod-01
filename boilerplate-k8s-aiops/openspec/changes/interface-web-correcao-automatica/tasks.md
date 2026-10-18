@@ -61,7 +61,7 @@
 - [x] 10.2 Extrair de `tests/test_e2e.py` para `tests/e2e_support.py` as pré-condições, a recriação dos namespaces, o `kubectl apply` dos manifestos e a espera pelos Warnings; `test_e2e.py` continua passando (D13)
 - [x] 10.3 Criar `tests/test_e2e_correcao.py` contra o cluster kind (contexto `kind-aiops`, pulado com mensagem se outro contexto estiver ativo), com `manifestos-k8s/nginx.yaml` em `teste-a` e `manifestos-k8s/kube-news.yaml` em `teste-b`: análise real dos dois cenários, app em processo com `CorrectionExecutor` real via `httpx.ASGITransport`, `GET /reports` e detalhe antes da correção, `POST /fix` do nginx e depois do kube-news, com espera até sair de CORRIGINDO (D13)
 - [x] 10.4 Asserções do e2e: banco (CORRIGIDO, `corrected_at`, `correction_result`), cluster com espera de rollout (nginx: imagem corrigida, porta preservada, réplicas disponíveis; kubenews: senhas iguais, imagem/env/10 réplicas preservados, todas Ready) e interface pós-correção (`badge-executed`, resultado, botão ausente, `?erro=status_invalido`)
-- [ ] 10.5 Gravar as respostas do agente de correção em `tests/fixtures/e2e_correction_responses.json` quando ausente e usá-las como casos em `tests/test_verdict.py`
+- [x] 10.5 Gravar as respostas do agente de correção em `tests/fixtures/e2e_correction_responses.json` quando ausente e usá-las como casos em `tests/test_verdict.py`
 - [x] 10.6 Documentar no README o roteiro do e2e de correção (pré-requisitos, comando, custo de uma análise e duas correções)
 - [x] 10.7 Roteiro manual no navegador com o seed: listagem, detalhe em cada status, `<none>` literal, link "Relatórios", acionamento, conflito por clique duplo e aba antiga; registrar o resultado no `design.md`
-- [ ] 10.8 Rodar `uv run pytest`, `uv run pytest -m db` e `uv run pytest -m e2e` e registrar o resultado
+- [x] 10.8 Rodar `uv run pytest`, `uv run pytest -m db` e `uv run pytest -m e2e` e registrar o resultado
